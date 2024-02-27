@@ -36,7 +36,7 @@ cfg = CFG('c')
 cfg.see_cfg(code, view=True)
 ```
 生成的CFG图样例：
-![CFG](https://github.com/rebibabo/TSA/assets/80667434/d1c05e69-f1e0-4b59-82c4-1073cbaaf913)
+![CFG](https://github.com/rebibabo/static_program_analysis_by_tree_sitter/assets/80667434/e9f6a213-a523-4a51-a6dd-849970e4d6fa)
 see_cfg的参数和see_tree的参数一样
 
 ## 生成CDG
@@ -46,6 +46,23 @@ cdg = CDG('c')
 cdg.see_cdg(code, view=True)
 ```
 生成的CDG图样例：
-![CDG](https://github.com/rebibabo/TSA/assets/80667434/cafe9bed-d65c-4d3d-b948-b8829983258a)
+![CDG](https://github.com/rebibabo/static_program_analysis_by_tree_sitter/assets/80667434/c8a3c611-f9e1-4953-afae-64a8684e92ea)
+
+## 生成DDG
+DDG.py继承自CFG类，能够生成数据依赖图，运行下面代码能够获得DDG图：
+```
+ddg = DDG('c')
+ddg.see_ddg(code, view=True)
+```
+生成的DDG图样例：
+![DDG](https://github.com/rebibabo/static_program_analysis_by_tree_sitter/assets/80667434/5368b90a-a9e0-48e1-9f16-0b2add0e7f7a)
+
+## 生成PDG
+PDG.py将CDG和DDG的节点和边结合在一起，运行下面代码获得PDG图：
+```
+pdg = PDG('c')
+pdg.see_pdg(code, view=True)
+```
+
 
 
