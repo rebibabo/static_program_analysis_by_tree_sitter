@@ -1,4 +1,5 @@
 text = lambda node: node.text.decode('utf-8')
+from graphviz import Digraph
 
 class Node:
     def __init__(self, node):
@@ -163,7 +164,7 @@ class Graph:
                 V.add(-node)    # 增加一个Exit节点，该节点的id为函数节点的相反数
                 E[self.Exit] = [Edge(self.r)]  # 将Exit节点连接到函数节点
         for node, edges in self.edges.items():
-            if edges == []:
+            if edges == [] or (len(edges) == 1 and edges[0].label == 'Y'):  # 没有出节点或者出节点只有一个且是Y（没有N）
                 E[self.Exit].append(Edge(node))   # 将Exit节点连接到没有出节点的节点
             for edge in edges:
                 # node -> edge.id 变成 edge.id -> node

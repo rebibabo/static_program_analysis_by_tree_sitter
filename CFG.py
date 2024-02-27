@@ -183,7 +183,7 @@ class CFG(AST):
 
 if __name__ == '__main__':
     code = '''
-    main()
+    int main()
     {  int  a[4][4],b[4][4],i,j;       /*a存放原始数组数据，b存放旋转后数组数据*/
     printf("input 16 numbers: ");
     /*输入一组数据存放到数组a中，然后旋转存放到b数组中*/

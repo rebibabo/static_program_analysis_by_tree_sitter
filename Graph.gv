@@ -1,0 +1,28 @@
+// Tree
+graph {
+	1 [label=1 fontname=fangsong shape=rectangle]
+	2 [label=2 fontname=fangsong shape=rectangle]
+	3 [label=3 fontname=fangsong shape=rectangle]
+	5 [label=5 fontname=fangsong shape=rectangle]
+	6 [label=6 fontname=fangsong shape=rectangle]
+	7 [label=7 fontname=fangsong shape=rectangle]
+	8 [label=8 fontname=fangsong shape=rectangle]
+	10 [label=10 fontname=fangsong shape=rectangle]
+	12 [label=12 fontname=fangsong shape=rectangle]
+	13 [label=13 fontname=fangsong shape=rectangle]
+	14 [label=14 fontname=fangsong shape=rectangle]
+	15 [label=15 fontname=fangsong shape=rectangle]
+	-1 [label=-1 fontname=fangsong shape=rectangle]
+	-1 -- 1
+	1 -- 2
+	2 -- 3
+	3 -- 5
+	5 -- 10
+	5 -- 6
+	6 -- 8
+	6 -- 7
+	10 -- 12
+	12 -- 13
+	12 -- 15
+	13 -- 14
+}
