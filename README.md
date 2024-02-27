@@ -63,6 +63,16 @@ PDG.py将CDG和DDG的节点和边结合在一起，运行下面代码获得PDG�
 pdg = PDG('c')
 pdg.see_pdg(code, view=True)
 ```
+生成的PDG图样例：
+![PDG](https://github.com/rebibabo/static_program_analysis_by_tree_sitter/assets/80667434/5e9b495e-97f3-45bd-b2c8-cfe220ebaaf8)
+
+## 生成CG
+CG.py继承自AST.py，能够生成函数调用图，运行下面代码能够生成CG图
+```
+cg = CG('c')
+cg.see_cg(code, view=True)
+```
+生成CG图样例：
 
 
-
+![5](https://github.com/rebibabo/static_program_analysis_by_tree_sitter/assets/80667434/9daf48a1-0315-4113-9e3d-6f6f81707501)
