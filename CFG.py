@@ -1,6 +1,7 @@
 from AST import *
 from utils import *
 import html
+import copy
 
 def get_break_continue_node(node):
     # 找到node节点循环中的所有break和continue节点并返回
@@ -158,6 +159,16 @@ class CFG(AST):
             cfg = Graph()
             for each in func_cfg:
                 cfg.add_edge(each)
+            # 删除break节点和continue节点
+            cfg_edges = copy.deepcopy(cfg.edges)
+            for node, edges in cfg_edges.items():
+                for i, edge in enumerate(edges):
+                    if cfg.id_to_nodes[edge.id].type in ['break_statement', 'continue_statement']:
+                        node_id = edge.id
+                        next_node = cfg.edges[node_id][0].id
+                        cfg.edges[node][i].id = next_node
+                        del cfg.edges[node_id]
+                        cfg.nodes.remove(cfg.id_to_nodes[node_id])
             cfg.get_def_use_info()
             self.cfgs.append(cfg)
 
@@ -165,6 +176,8 @@ class CFG(AST):
         self.construct_cfg(code)
         dot = Digraph(comment=filename, strict=True)
         for cfg in self.cfgs:
+            # for n in cfg.id_to_nodes:
+            #     input((n, cfg.id_to_nodes[n].id))
             for node in cfg.nodes:
                 label = f"<({node.type}, {html.escape(node.text)})<SUB>{node.line}</SUB>>"
                 if node.is_branch:
@@ -182,23 +195,7 @@ class CFG(AST):
         return self.cfgs
 
 if __name__ == '__main__':
-    code = '''
-    int main()
-    {  int  a[4][4],b[4][4],i,j;       /*a存放原始数组数据，b存放旋转后数组数据*/
-    printf("input 16 numbers: ");
-    /*输入一组数据存放到数组a中，然后旋转存放到b数组中*/
-    for(i=0;i<4;i++)
-        for(j=0;j<4;j++)
-        {  scanf("%d",&a[i][j]);
-            b[3-j][i]=a[i][j];
-            }
-    printf("array b:\n");
-    for(i=0;i<4;i++)
-        {  for(j=0;j<4;j++)
-            printf("%6d",b[i][j]);
-            printf("\n");
-        }
-    '''
+    code = r'{}'.format(open('test.c', 'r', encoding='utf-8').read())
     cfg = CFG('c')
     # cfg.see_tree(code, view=True)
     cfg.see_cfg(code, view=True)

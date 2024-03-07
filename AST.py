@@ -125,35 +125,8 @@ class AST:
         return tree.root_node.has_error
 
 if __name__ == '__main__':
-    code = '''
-    #include<stdio.h>	
-    void main()
-    {
-        int n[10] = { 25,35,68,79,21,13,98,7,16,62 };//定义一个大小为10的数组
-        int i, j,k,temp;
-        for (i = 1; i <= 9; i++)//外层循环是比较的轮数，数组内有10个数，那么就应该比较10-1=9轮
-        {
-            for (j = 0; j <= 9 - i; j++)//内层循环比较的是当前一轮的比较次数，例如：第一轮比较9-1=8次，第二轮比较9-2=7次
-            {
-                if (n[j] > n[j + 1])//相邻两个数如果逆序，则交换位置
-                {
-                    temp = n[j];
-                    n[j] = n[j + 1];
-                    n[j + 1] = temp;
-                }
-            }
-            printf("第%d趟排序完成后的数据排序:\n",i);
-            for (k = 0;k < 10; k++)
-                printf("%-4d", n[i]);
-            printf("\n");
-        }
-        printf("排序过后的数顺序:\n");
-        for (i = 0; i < 10; i++)
-            printf("%-4d", n[i]);
-        printf("\n");
-    }
-    '''
-    ast = AST('c')
+    code = r'{}'.format(open('test.c', 'r', encoding='utf-8').read())
+    ast = AST('cpp')
     print(ast.tokenize(code))
     ast.see_tree(code, view=True)
     # node = Node(1, 0, 'A', 0, 0, 0, 0, 'A')

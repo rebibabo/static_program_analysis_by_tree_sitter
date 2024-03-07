@@ -1,3 +1,5 @@
 *.pdf
 build
 __pycache__
+test.c
+test

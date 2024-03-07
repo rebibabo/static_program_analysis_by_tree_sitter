@@ -15,6 +15,8 @@ class DDG(CFG):
             ddg = {}
             defs = cfg.defs
             uses = cfg.uses
+            print(f"defs: {defs}")
+            print(f"uses: {uses}")
             # There is a data dependence from X to Y with respect to a variable v iff 
             # there is a non-null path p from X to Y with no intervening definition of v either:
             #   X contains a definition of v and Y a use of v;
@@ -31,12 +33,16 @@ class DDG(CFG):
                     for u in use_:
                         paths = cfg.findAllPath(d, u)
                         for path in paths:
-                            for n in path:
+                            is_arrival = True
+                            for n in path[1:-1]:
                                 node = cfg.id_to_nodes[n]
                                 if X in node.defs:
+                                    is_arrival = False
                                     break
-                            edge.setdefault((d, u), [])
-                            edge[(d, u)].append(X)
+                            if not is_arrival:
+                                break
+                            edge.setdefault((d, u), set())
+                            edge[(d, u)].add(X)
             # use X to def Y
             for X in uses:
                 if X not in defs:
@@ -47,12 +53,16 @@ class DDG(CFG):
                     for d in def_:
                         paths = cfg.findAllPath(u, d)
                         for path in paths:
-                            for n in path:
+                            is_arrival = True
+                            for n in path[1:-1]:
                                 node = cfg.id_to_nodes[n]
                                 if X in node.defs:
+                                    is_arrival = False
                                     break
-                            edge.setdefault((u, d), [])
-                            edge[(u, d)].append(X)
+                            if not is_arrival:
+                                break
+                            edge.setdefault((u, d), set())
+                            edge[(u, d)].add(X)
             # def X to def Y
             for X in defs:
                 def_ = defs[X]
@@ -60,12 +70,16 @@ class DDG(CFG):
                     for d2 in def_:
                         paths = cfg.findAllPath(d1, d2)
                         for path in paths:
-                            for n in path:
+                            is_arrival = True
+                            for n in path[1:-1]:
                                 node = cfg.id_to_nodes[n]
                                 if X in node.defs:
+                                    is_arrival = False
                                     break
-                            edge.setdefault((d1, d2), [])
-                            edge[(d1, d2)].append(X)
+                            if not is_arrival:
+                                break
+                            edge.setdefault((d1, d2), set())
+                            edge[(d1, d2)].add(X)
             for (u, v), Xs in edge.items():
                 ddg.setdefault(u, [])
                 ddg[u].append(Edge(v, type='DDG', token=Xs))
@@ -92,29 +106,6 @@ class DDG(CFG):
             dot.render(filename, view=view, cleanup=True)
 
 if __name__ == '__main__':
-    code = '''
-int main( )
-{
-    long a,b,c,d,e,x;
-    printf("请输入 5 位数字：");
-    scanf("%ld",&x);
-    a=x/10000;        /*分解出万位*/
-    b=x%10000/1000;   /*分解出千位*/
-    c=x%1000/100;     /*分解出百位*/
-    d=x%100/10;       /*分解出十位*/
-    e=x%10;           /*分解出个位*/
-    if (a!=0){
-        printf("为 5 位数,逆序为： %ld %ld %ld %ld %ld\n",e,d,c,b,a);
-    } else if(b!=0) {
-         printf("为 4 位数,逆序为： %ld %ld %ld %ld\n",e,d,c,b);
-    } else if(c!=0) {
-         printf("为 3 位数,逆序为：%ld %ld %ld\n",e,d,c);
-    } else if(d!=0) {
-         printf("为 2 位数,逆序为： %ld %ld\n",e,d);
-    } else if(e!=0) {
-         printf("为 1 位数,逆序为：%ld\n",e);
-    }
-}
-    '''
+    code = r'{}'.format(open('test.c', 'r', encoding='utf-8').read())
     ddg = DDG('c')
     ddg.see_ddg(code ,view=True)

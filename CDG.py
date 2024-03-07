@@ -60,7 +60,7 @@ class Tree:
 class CDG(CFG):
     def get_subTree(self, cfg):
         # 按照广度优先遍历，找出一个子树
-        V, E, Exit, r = cfg.nodes, cfg.edges, cfg.Exit, cfg.r
+        V, E, Exit = cfg.nodes, cfg.edges, cfg.Exit
         visited = {v:False for v in V}
         queue = [Exit]
         visited[Exit] = True
@@ -144,10 +144,10 @@ class CDG(CFG):
         self.construct_cdg(code)
         dot = Digraph(comment=filename, strict=True)
         for cdg in self.cdgs:
-            for v in cdg.edges:
-                if v < 0:
+            for n in cdg.edges:
+                if n < 0:
                     continue
-                node = cdg.id_to_nodes[v]
+                node = cdg.id_to_nodes[n]
                 label = f"<({node.type}, {html.escape(node.text)})<SUB>{node.line}</SUB>>"
                 if node.is_branch:
                     dot.node(str(node.id), shape='diamond', label=label, fontname='fangsong')
@@ -155,29 +155,14 @@ class CDG(CFG):
                     dot.node(str(node.id), label=label, fontname='fangsong')
                 else:
                     dot.node(str(node.id), shape='rectangle', label=label, fontname='fangsong')
+            for v in cdg.edges:
                 for u in cdg.edges[v]:
                     dot.edge(str(u.id), str(v))
         if pdf:
             dot.render(filename, view=view, cleanup=True)
 
 if __name__ == '__main__':
-    code = '''
-    int main()
-    {  int  a[4][4],b[4][4],i,j;       /*a存放原始数组数据，b存放旋转后数组数据*/
-    printf("input 16 numbers: ");
-    /*输入一组数据存放到数组a中，然后旋转存放到b数组中*/
-    for(i=0;i<4;i++)
-        for(j=0;j<4;j++)
-        {  scanf("%d",&a[i][j]);
-            b[3-j][i]=a[i][j];
-            }
-    printf("array b:\n");
-    for(i=0;i<4;i++)
-        {  for(j=0;j<4;j++)
-            printf("%6d",b[i][j]);
-            printf("\n");
-        }
-    '''
+    code = r'{}'.format(open('test.c', 'r', encoding='utf-8').read())
     cdg = CDG('c')
     # cdg.see_cfg(code, view=True)
     cdg.see_cdg(code, view=True)

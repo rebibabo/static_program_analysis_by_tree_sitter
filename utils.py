@@ -3,9 +3,10 @@ from graphviz import Digraph
 
 class Node:
     def __init__(self, node):
-        self.line = node.start_point[0]
+        self.line = node.start_point[0] + 1
         self.type = node.type
-        self.id = self.line # 用行号唯一标识节点的id
+        # self.id = hash((node.start_point, node.end_point)) % 100000
+        self.id = node.start_point[0] + 1
         self.is_branch = False
         if node.type == 'function_definition':
             self.text = text(node.child_by_field_name('declarator').child_by_field_name('declarator'))  # 函数名
@@ -41,24 +42,34 @@ class Node:
 
     def get_all_identifier(self, node):
         ids = []
-        def help(node, ids):
+        def help(node):
             # 获取所有的变量名
+            if node is None:
+                return
             if node.type == 'identifier' and node.parent.type not in ['call_expression']:
                 ids.append(text(node))
             for child in node.children:
-                help(child, ids)
-        help(node, ids)
+                help(child)
+        help(node)
         return ids
 
-    def get_self_increment_id(self, node):
-        ids = []
-        def help(node, ids):
+    def get_def_id(self, node):
+        update_ids, assignment_ids = [], []
+        def help(node):
             if node.type == 'update_expression':
-                ids.append(text(node.child_by_field_name('argument')))
+                update_ids.append(text(node.child_by_field_name('argument')))
+            if node.type == 'assignment_expression':
+                assignment_ids.append(text(node.child_by_field_name('left')))
             for child in node.children:
-                help(child, ids)
-        help(node, ids)
-        return ids
+                help(child)
+        help(node)
+        return update_ids, assignment_ids
+
+    def get_node_def_use(self, node):
+        uses = self.get_all_identifier(node)
+        update_ids, assignment_ids = self.get_def_id(node)
+        uses = list(set(uses) - set(assignment_ids) | set(update_ids))
+        return update_ids + assignment_ids, uses
 
     def get_def_use_info(self, node):
         # 获取变量的定义信息
@@ -87,31 +98,35 @@ class Node:
                 d = text(node.child_by_field_name('argument'))
                 defi.append(d)
                 uses.append(d)
+            else:
+                d, u = self.get_def_use_info(node)
+                defi.extend(d)
+                uses.extend(u)
+        elif 'declaration' in node.type:
+            defi.extend(self.get_all_identifier(node))
         elif 'declarator' in node.type:
             d = text(node.child_by_field_name('declarator'))
             u = self.get_all_identifier(node) 
             defi.append(d)
             uses = [i for i in u if i != d]
-        elif node.type == 'comma_expression':
-            for child in node.children:
-                d, u = self.get_def_use_info(child)
-                defi.extend(d)
-                uses.extend(u)
         elif node.type in ['if_statement', 'while_statement', 'do_statement', 'switch_statement']:
             condition = node.child_by_field_name('condition')
-            uses = self.get_all_identifier(condition)
+            d2, u2 = self.get_node_def_use(condition)
+            defi.extend(d2)
+            uses.extend(u2)
         elif node.type == 'for_statement':
             initializer = node.child_by_field_name('initializer')
             condition = node.child_by_field_name('condition')
             update = node.child_by_field_name('update')
-            d1, u1 = self.get_def_use_info(initializer)
-            d2, u2 = self.get_def_use_info(condition)
-            d3, u3 = self.get_def_use_info(update)
+            d1, u1 = self.get_node_def_use(initializer)
+            d2, u2 = self.get_node_def_use(condition)
+            d3, u3 = self.get_node_def_use(update)
             defi.extend(d1 + d2 + d3)
             uses.extend(u1 + u2 + u3)
         else:
-            uses = self.get_all_identifier(node)
-            defi = self.get_self_increment_id(node)
+            d, u = self.get_node_def_use(node)
+            defi.extend(d)
+            uses.extend(u)
         defi = list(set(defi))
         uses = list(set(uses))
         return defi, uses
