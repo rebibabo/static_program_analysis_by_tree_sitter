@@ -178,7 +178,7 @@ class IdType:
                 str.append(i.__str__())
         return '\n'.join(str)
 
-class Function:
+class Func:
     def __init__(self, node, file_path):
         '''
         目的-获取函数的返回类型，函数名，参数类型
@@ -210,7 +210,66 @@ class Function:
         return self.signature == other.signature
 
     def __str__(self):
-        return str(self.signature)
+        param_str = ''
+        for param in self.signature['parameters']:
+            param_str += f"({param[0]}: {param[1]}) "
+        return f"function name: {self.signature['name']}\nreturn type: {self.signature['return']}\nparameters: {param_str}\nfile path: {self.file_path}\n\n"
+
+class Function:
+    def __init__(self):
+        self.funcs = {}
+        self.id_to_func = {}
+
+    def add_func(self, node, file_path):
+        func = Func(node, file_path)
+        if func.name not in self.funcs:
+            self.funcs[func.name] = [func]
+            self.id_to_func[func.id] = func
+        else:
+            if func not in self.funcs[func.name]:
+                self.funcs[func.name].append(func)
+        return func
+
+    def match_func(self, func_name, param_node, expression):
+        '''根据函数名和参数匹配函数，返回函数信息'''
+        if len(self.funcs[func_name]) == 1: # 没有重构函数
+            return self.funcs[func_name][0]
+        # 如果有重构函数，如果参数的个数唯一，则返回对应函数
+        if param_node.type != 'argument_list':
+            print("not a param list")
+            return None
+        param_types = []
+        for param in param_node.children[1: -1]:
+            if param.type == ',':
+                continue
+            param_types.append(expression.traverse(param))
+        match_num = 0
+        match_func = None
+        for func in self.funcs[func_name]:
+            if len(func.signature['parameters']) == len(param_types):
+                match_func = func
+                match_num += 1
+        if match_num == 1:
+            return match_func
+        else:   # 根据参数类型来匹配
+            for func in self.funcs[func_name]:
+                func_param_types = [x[1] for x in func.signature['parameters']]
+                if func_param_types == param_types:
+                    return func
+        return None
+
+    def __getitem__(self, func_name):
+        return self.funcs[func_name]
+
+    def __call__(self):
+        return self.funcs
+
+    def __str__(self):
+        str = ''
+        for func_name in self.funcs:
+            for f in self.funcs[func_name]:
+                str += f.__str__()
+        return str
 
 class Constant:
     def __init__(self, node):
@@ -327,30 +386,12 @@ class Expression:
                 return argument_type + '*'
         elif node.type == 'call_expression':    # 函数类型，例如f(a, b)，f的类型是int(int, int)，那么f(a, b)的类型是int
             callee = text(node.child_by_field_name('function'))
-            if callee in self.function: 
-                if len(self.function[callee]) == 1: # 如果没有重构函数
-                    return self.function[callee][0].signature['return']
-                return_same = True  # 如果重构函数的返回类型都一样
-                return_type = self.function[callee][0].signature['return']
-                for func in self.function[callee][1:]:
-                    if func.signature['return'] != return_type:
-                        return_same = False
-                        break
-                if return_same:
-                    return return_type
-                # 需要根据函数签名匹配返回的类型
+            if callee in self.function(): 
                 parameters = node.child_by_field_name('arguments')
-                param_types = []
-                for param in parameters.children[1: -1]:
-                    if param.type == ',':
-                        continue
-                    param_types.append(self.traverse(param))
-                for func in self.function[callee]:
-                    if list(func.signature['parameters'].values()) == param_types:
-                        return func.signature['return']
-                return 'unknown'
-            else:
-                return 'unknown'
+                match_func = self.function.match_func(callee, parameters, self)
+                if match_func:
+                    return match_func.type
+            return 'unknown'
         elif node.type == 'parenthesized_expression':   # 括号表达式返回括号内的表达式类型
             return self.traverse(node.children[1])
         elif node.type == 'binary_expression':  # 二元表达式
@@ -425,14 +466,15 @@ class File(AST):
     def __init__(self, language, file_path):
         super().__init__(language)
         self.structure_ = {}    # {structure_name: structure}
-        self.function = {}      # {function_name: [function]} 可能重构
-        self.id_to_function = {}    # {id: function}
+        self.function = Function()      # {function_name: [function]} 可能重构
         self.file_path = os.path.join(os.path.abspath('.'), file_path)      # 文件路径
         self.idType = IdType(file_path)    # 变量名类型
         self.CG = {}    # 存放函数调用图
+        self.unknown_call = {}  # 存放未知函数调用
+        self.unknown_id = {}    # 存放未知函数名id
         code = r'{}'.format(open(self.file_path, 'r', encoding='utf-8', errors='ignore').read())
         tree = self.parser.parse(bytes(code, 'utf8'))
-        self.root_node = tree.root_node
+        self.root_node = tree.root_node 
 
     def construct_file(self, node=None):
         '''
@@ -480,17 +522,14 @@ class File(AST):
                 self.idType.add_def_var({name: const.type}, domain, None, None)
             elif child.type == 'function_definition':   # 获取函数内部的变量类型
                 func_node = child
-                func_info = Function(func_node, self.file_path)
-                self.function.setdefault(func_info.name, [])
-                self.function[func_info.name].append(func_info)
-                self.id_to_function[func_info.id] = func_info
+                func_info = self.function.add_func(func_node, self.file_path)
                 for name, type in func_info.signature['parameters']:
                     domain = [func_node.start_point[0] + 1, func_node.end_point[0] + 1]
                     self.idType.add_def_var({name: type}, domain, None, None)
                 body = func_node.child_by_field_name('body')
                 self.get_local_type(body)   # 获取函数复合语句内部的变量类型
         self.construct_call_graph()
-        # self.query_type(self.root_node)
+        self.query_type(self.root_node)
         # print(self.idType)
         # print(self.structure_)
 
@@ -502,35 +541,19 @@ class File(AST):
             if node.type == 'call_expression':
                 callee = text(node.child_by_field_name('function'))
                 arguments = node.child_by_field_name('arguments')
-                if callee in self.function:
-                    callee_id = None
-                    if len(self.function[callee]) == 1:
-                        callee_id = self.function[callee][0].id
-                    else:
-                        return_same = True
-                        return_type = self.function[callee][0].signature['return']
-                        for func in self.function[callee][1:]:
-                            if func.signature['parameters'] != return_type:
-                                return_same = False
-                                break
-                        if return_same:
-                            callee_id = self.function[callee][0].id
-                        else:
-                            argument_type = []
-                            for argument in arguments.children[1: -1]:
-                                if argument.type == ',':
-                                    continue
-                                argument_type.append(self.expression.traverse(argument))
-                            for func in self.function[callee]:
-                                parameter_types = [x[1] for x in func.signature['parameters']]
-                                if parameter_types == argument_type:
-                                    callee_id = func.id
-                    if callee_id:
-                        self.CG.setdefault(callee_id, set())
-                        self.CG[callee_id].add(caller)
+                if callee in self.function():
+                    match_func = self.function.match_func(callee, arguments, self.expression)
+                    if match_func:
+                        self.CG.setdefault(match_func.id, set())
+                        self.CG[match_func.id].add(caller)
+                else:   # 不是自己定义的函数
+                    self.unknown_call.setdefault(callee, set())
+                    self.unknown_call[callee].add(caller)
+                    if callee not in self.unknown_id:
+                        self.unknown_id[callee] = -len(self.unknown_id) - 1
             for child in node.children:
                 query_callee(child, caller)
-        for func_name in self.function: # 变量文件内的所有函数，查询各个函数内部调用的函数
+        for func_name in self.function(): # 变量文件内的所有函数，查询各个函数内部调用的函数
             for func in self.function[func_name]:
                 query_callee(func.func_node, func.id)
 
@@ -573,25 +596,30 @@ class File(AST):
         '''可视化函数调用图'''
         self.construct_call_graph()
         dot = Digraph(comment=self.file_path)
-        for funcs in self.function.values():
+        for funcs in self.function().values():
             for f in funcs:
                 file_path = f.file_path.replace('\\', '/')
                 label = f'name: {f.name}\\ntype: {f.type}\\nparameters: {list(f.signature["parameters"])}\\nfile path: {file_path}'
                 # label = f.name
-            dot.node(str(f.id), shape='rectangle', label=label, fontname='fangsong')
+                dot.node(str(f.id), shape='rectangle', label=label, fontname='fangsong')
+        for func in self.unknown_id:
+            dot.node(str(self.unknown_id[func]), shape='rectangle', label=func, fontname='fangsong')
         for caller, callees in self.CG.items():
             for callee in callees:
                 dot.edge(str(callee), str(caller))
+        for caller, callees in self.unknown_call.items():
+            for callee in callees:
+                dot.edge(str(callee), str(self.unknown_id[caller]))
         if pdf:
             dot.render('_'.join(self.file_path.split('.')), view=view, cleanup=True)
 
     def merge(self, other):
         self.structure_.update(other.structure_)
         self.idType.vars.update(other.idType.vars)
-        self.id_to_function.update(other.id_to_function)
-        for func_name, funcs in other.function.items():
-            self.function.setdefault(func_name, [])
-            self.function[func_name].extend(funcs)
+        for func_name, funcs in other.function().items():
+            self.function().setdefault(func_name, [])
+            self.function()[func_name].extend(funcs)
+            self.function.id_to_func.update(other.function.id_to_func)
 
 class Dir(AST):
     def __init__(self, path, language='c'):
@@ -625,7 +653,6 @@ class Dir(AST):
         while True:
             finish_load = True
             for f in self.Indegree:
-                # input(f)
                 if self.Indegree[f] == 0 and not self.load[f]:
                     finish_load = False
                     self.load[f] = True
@@ -636,12 +663,12 @@ class Dir(AST):
                         self.Indegree[included_file] -= 1
             if finish_load:
                 break
-        for f in self.files.values():
-            f.construct_call_graph()
-            f.see_cg(view=True)
+        for file in self.files.values():
+            file.construct_call_graph()
+            file.see_cg(view=True)
 
 if __name__ == '__main__':
     # file = File('cpp', 'test/quadTree.cpp')
     # file.construct_file()
     # file.see_cg(view=True)
-    dir = Dir('./test/cpuinfo-main/src/arm/windows')
+    dir = Dir('./test')
