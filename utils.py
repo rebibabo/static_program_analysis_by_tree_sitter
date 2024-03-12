@@ -5,8 +5,8 @@ class Node:
     def __init__(self, node):
         self.line = node.start_point[0] + 1
         self.type = node.type
-        # self.id = hash((node.start_point, node.end_point)) % 100000
-        self.id = node.start_point[0] + 1
+        self.id = hash((node.start_point, node.end_point)) % 1000000
+        # self.id = node.start_point[0] + 1
         self.is_branch = False
         if node.type == 'function_definition':
             self.text = text(node.child_by_field_name('declarator').child_by_field_name('declarator'))  # 函数名

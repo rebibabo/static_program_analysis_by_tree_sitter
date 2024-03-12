@@ -85,8 +85,9 @@ class CDG(CFG):
             for node, edges in cfg.edges.items():
                 prev.setdefault(node, [])
                 for next_node in edges:
-                    prev.setdefault(next_node.id, [])
-                    prev[next_node.id].append(node)
+                    id = next_node.id
+                    prev.setdefault(id, [])
+                    prev[id].append(node)
         return prev
 
     def post_dominator_tree(self, cfgs, prev):
@@ -103,6 +104,8 @@ class CDG(CFG):
                     if v != root:
                         for u in prev[v]:
                             parent_v = tree.parent[v]
+                            if u not in tree.vertex:
+                                cfg.see_graph()
                             if u != parent_v and parent_v != tree.get_lca(u, parent_v):
                                 tree.parent[v] = tree.get_lca(u, parent_v)
                                 changed = True
@@ -142,7 +145,8 @@ class CDG(CFG):
 
     def see_cdg(self, code, filename='CDG', pdf=True, view=False):
         self.construct_cdg(code)
-        dot = Digraph(comment=filename, strict=True)
+        # dot = Digraph(comment=filename, strict=True)
+        dot = Digraph(comment=filename, strict=True, format='pdf', graph_attr={'rankdir':'LR'})
         for cdg in self.cdgs:
             for n in cdg.edges:
                 if n < 0:

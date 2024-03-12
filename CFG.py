@@ -29,7 +29,6 @@ def get_edge(in_nodes):
 class CFG(AST):
     def __init__(self, language):
         super().__init__(language)
-        self.node_set = {}  # 存放每一个节点的信息
         self.cfgs = []  # 存放每一个函数的CFG图
 
     def create_cfg(self, node, in_nodes=[()]):
@@ -160,15 +159,15 @@ class CFG(AST):
             for each in func_cfg:
                 cfg.add_edge(each)
             # 删除break节点和continue节点
-            cfg_edges = copy.deepcopy(cfg.edges)
-            for node, edges in cfg_edges.items():
-                for i, edge in enumerate(edges):
-                    if cfg.id_to_nodes[edge.id].type in ['break_statement', 'continue_statement']:
-                        node_id = edge.id
-                        next_node = cfg.edges[node_id][0].id
-                        cfg.edges[node][i].id = next_node
-                        del cfg.edges[node_id]
-                        cfg.nodes.remove(cfg.id_to_nodes[node_id])
+            # cfg_edges = copy.deepcopy(cfg.edges)
+            # for node, edges in cfg_edges.items():
+            #     for i, edge in enumerate(edges):
+            #         if cfg.id_to_nodes[edge.id].type in ['break_statement', 'continue_statement']:
+            #             node_id = edge.id
+            #             next_node = cfg.edges[node_id][0].id
+            #             cfg.edges[node][i].id = next_node
+            #             del cfg.edges[node_id]
+            #             cfg.nodes.remove(cfg.id_to_nodes[node_id])
             cfg.get_def_use_info()
             self.cfgs.append(cfg)
 

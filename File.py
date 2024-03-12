@@ -35,6 +35,8 @@ def Pointer(node, type):
         while node and node.type == 'array_declarator':
             dim += 1
             node = node.children[0]
+    if node.type == 'function_declarator':
+        return None, None
     name = text(node)
     type = f'{type}{"*"*dim}'
     return name, type
@@ -67,6 +69,8 @@ class Declaration:
             return
         type_node = node.child_by_field_name('type') 
         if type_node.type == 'struct_specifier':      # 结构体类型
+            if not type_node.child_by_field_name('name'):
+                return
             self.type = text(type_node.child_by_field_name('name'))
         else:       # 基本类型
             self.type = text(type_node)
@@ -188,9 +192,13 @@ class Func:
         self.func_node = node
         self.file_path = file_path
         self.type = text(node.child_by_field_name('type'))
-        self.id = node.start_point[0] + 1
+        self.line = node.start_point[0] + 1
+        self.id = hash((node.start_byte, node.end_byte))
         while node.type not in ['function_declarator', 'parenthesized_declarator']: # parenthesized_declarator: 例如main(){}, void省略了
             node = node.child_by_field_name('declarator')
+            if not node:
+                self.name = None
+                return
         if node.type == 'function_declarator':
             self.name = text(node.child_by_field_name('declarator'))
             parameters = node.child_by_field_name('parameters')
@@ -222,6 +230,8 @@ class Function:
 
     def add_func(self, node, file_path):
         func = Func(node, file_path)
+        if not func.name:
+            return
         if func.name not in self.funcs:
             self.funcs[func.name] = [func]
             self.id_to_func[func.id] = func
@@ -523,13 +533,15 @@ class File(AST):
             elif child.type == 'function_definition':   # 获取函数内部的变量类型
                 func_node = child
                 func_info = self.function.add_func(func_node, self.file_path)
+                if not func_info:
+                    continue
                 for name, type in func_info.signature['parameters']:
                     domain = [func_node.start_point[0] + 1, func_node.end_point[0] + 1]
                     self.idType.add_def_var({name: type}, domain, None, None)
                 body = func_node.child_by_field_name('body')
                 self.get_local_type(body)   # 获取函数复合语句内部的变量类型
-        self.construct_call_graph()
-        self.query_type(self.root_node)
+        # self.construct_call_graph()
+        # self.query_type(self.root_node)
         # print(self.idType)
         # print(self.structure_)
 
@@ -592,9 +604,11 @@ class File(AST):
             self.query_type(child)
         return id_types
 
-    def see_cg(self, pdf=True, view=False):
+    def see_cg(self, unknown=True, pdf=True, view=True):
         '''可视化函数调用图'''
         self.construct_call_graph()
+        if not self.function():
+            return
         dot = Digraph(comment=self.file_path)
         for funcs in self.function().values():
             for f in funcs:
@@ -602,16 +616,21 @@ class File(AST):
                 label = f'name: {f.name}\\ntype: {f.type}\\nparameters: {list(f.signature["parameters"])}\\nfile path: {file_path}'
                 # label = f.name
                 dot.node(str(f.id), shape='rectangle', label=label, fontname='fangsong')
-        for func in self.unknown_id:
-            dot.node(str(self.unknown_id[func]), shape='rectangle', label=func, fontname='fangsong')
         for caller, callees in self.CG.items():
             for callee in callees:
                 dot.edge(str(callee), str(caller))
-        for caller, callees in self.unknown_call.items():
-            for callee in callees:
-                dot.edge(str(callee), str(self.unknown_id[caller]))
+        if unknown:
+            for func in self.unknown_id:
+                dot.node(str(self.unknown_id[func]), shape='rectangle', label=func, fontname='fangsong')
+            for caller, callees in self.unknown_call.items():
+                for callee in callees:
+                    dot.edge(str(callee), str(self.unknown_id[caller]))
         if pdf:
-            dot.render('_'.join(self.file_path.split('.')), view=view, cleanup=True)
+            cur_path = os.path.abspath('.')
+            root_path = os.path.commonprefix([self.file_path, cur_path])
+            rel_path = os.path.relpath(self.file_path, root_path).replace('\\', '/')
+            output_path = os.path.join(root_path, "pdf", rel_path)
+            dot.render(output_path, view=view, cleanup=True)
 
     def merge(self, other):
         self.structure_.update(other.structure_)
@@ -622,53 +641,61 @@ class File(AST):
             self.function.id_to_func.update(other.function.id_to_func)
 
 class Dir(AST):
-    def __init__(self, path, language='c'):
+    def __init__(self, path, language='cpp'):
         super().__init__(language)
-        self.path = path
-        filenames = os.listdir(self.path)
-        self.filenames = []
-        for f in filenames:
-            if f.split('.')[-1] in ['c', 'cpp', 'h', 'hpp', 'cc']:
-                self.filenames.append(f)
-        self.Include = {f: [] for f in self.filenames}
-        self.Indegree = {f: 0 for f in self.filenames}
-        self.Included = {f: [] for f in self.filenames}
-        self.files = {f: None for f in self.filenames}
-        self.load = {f: False for f in self.filenames}
-        for f in self.filenames:
+        self.path = os.path.abspath(path)
+        self.filepaths = []
+        for root, _, files in os.walk(self.path):
+            for file in files:
+                if file.split('.')[-1] in ['c', 'cpp', 'h', 'hpp', 'cc']:
+                    filepath = os.path.abspath(os.path.join(root, file))
+                    relpath = os.path.relpath(filepath, self.path).replace('\\', '/')
+                    self.filepaths.append(relpath)
+
+        self.Include = {f: [] for f in self.filepaths}
+        self.files = {f: None for f in self.filepaths}
+        for f in self.filepaths:
             self.files[f] = File('c', os.path.join(self.path, f))
             code = r'{}'.format(open(os.path.join(self.path, f), 'r', encoding='utf-8', errors='ignore').read())
             tree = self.parser.parse(bytes(code, 'utf8'))
             root_node = tree.root_node
-            for child in root_node.children:
-                if child.type == 'preproc_include':
-                    path = child.child_by_field_name('path')
-                    if path.type == 'string_literal':
-                        include = text(path)[1:-1]
-                        if include in self.Included:
-                            self.Included[include].append(f)
-                            self.Include[f].append(include)
-                        self.Indegree[f] += 1
+            self.find_include(root_node, f)
                         
-        while True:
-            finish_load = True
-            for f in self.Indegree:
-                if self.Indegree[f] == 0 and not self.load[f]:
-                    finish_load = False
-                    self.load[f] = True
-                    for include_file in self.Include[f]:
-                        self.files[f].merge(self.files[include_file])
-                    self.files[f].construct_file()
-                    for included_file in self.Included[f]:
-                        self.Indegree[included_file] -= 1
-            if finish_load:
-                break
-        for file in self.files.values():
-            file.construct_call_graph()
-            file.see_cg(view=True)
+        for f in self.filepaths:
+            self.files[f].construct_file()
+        for f in self.files:
+            for include_file in self.Include[f]:
+                self.files[f].merge(self.files[include_file])
+            self.files[f].construct_file()
+            self.files[f].construct_call_graph()
+            self.files[f].see_cg(view=False, unknown=True)
+
+    def find_include(self, node, f):
+        for child in node.children:
+            if child.type == 'preproc_include':
+                path = child.child_by_field_name('path')
+                if path.type == 'string_literal':
+                    include = text(path)[1:-1]
+                    if include == 'config.h':   # VS的配置头文件忽略
+                        continue
+                    include_path = os.path.normpath(os.path.join(os.path.dirname(f), include)).replace('\\', '/')
+                    if include_path in self.Include:
+                        self.Include[f].append(include_path)
+                    else:
+                        file = os.path.basename(include_path)
+                        is_find = False
+                        for f_ in self.filepaths:
+                            if file == os.path.basename(f_):
+                                self.Include[f].append(f_)
+                                is_find = True
+                                break
+                        if not is_find:
+                            print(f'Error: In file {f}, {include} not in files')
+            elif child.type == 'preproc_ifdef': # ifdef
+                self.find_include(child, f)
 
 if __name__ == '__main__':
-    # file = File('cpp', 'test/quadTree.cpp')
+    # file = File('c', 'test.c')
     # file.construct_file()
     # file.see_cg(view=True)
-    dir = Dir('./test')
+    dir = Dir('./test/4')

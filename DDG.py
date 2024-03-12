@@ -15,8 +15,8 @@ class DDG(CFG):
             ddg = {}
             defs = cfg.defs
             uses = cfg.uses
-            print(f"defs: {defs}")
-            print(f"uses: {uses}")
+            # print(f"defs: {defs}")
+            # print(f"uses: {uses}")
             # There is a data dependence from X to Y with respect to a variable v iff 
             # there is a non-null path p from X to Y with no intervening definition of v either:
             #   X contains a definition of v and Y a use of v;
