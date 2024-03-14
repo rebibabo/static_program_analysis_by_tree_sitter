@@ -27,6 +27,8 @@ def Pointer(node, type):
     输出-变量名和类型，例如a, int**
     '''
     dim = 0
+    if node.type not in ['array_declarator', 'pointer_declarator']:
+        return None, type
     node_type = node.type
     while node and node.type == node_type:
         dim += 1
@@ -36,8 +38,9 @@ def Pointer(node, type):
             dim += 1
             node = node.children[0]
     if node.type == 'function_declarator':
-        return None, None
-    name = text(node)
+        name = text(node.child_by_field_name('declarator'))
+    else:
+        name = text(node)
     type = f'{type}{"*"*dim}'
     return name, type
 
@@ -191,13 +194,16 @@ class Func:
         '''
         self.func_node = node
         self.file_path = file_path
-        self.type = text(node.child_by_field_name('type'))
+        type = text(node.child_by_field_name('type'))      # 这里的type有问题
+        _, self.type = Pointer(node.child_by_field_name('declarator'), type)
         self.line = node.start_point[0] + 1
-        self.id = hash((node.start_byte, node.end_byte))
+        self.id = hash((node.start_byte, node.end_byte)) % 1000000007
         while node.type not in ['function_declarator', 'parenthesized_declarator']: # parenthesized_declarator: 例如main(){}, void省略了
             node = node.child_by_field_name('declarator')
             if not node:
                 self.name = None
+                self.type = None
+                self.signature = {'parameters':[]}
                 return
         if node.type == 'function_declarator':
             self.name = text(node.child_by_field_name('declarator'))
@@ -221,7 +227,7 @@ class Func:
         param_str = ''
         for param in self.signature['parameters']:
             param_str += f"({param[0]}: {param[1]}) "
-        return f"function name: {self.signature['name']}\nreturn type: {self.signature['return']}\nparameters: {param_str}\nfile path: {self.file_path}\n\n"
+        return f"function name: {self.name}\nreturn type: {self.type}\nparameters: {param_str}\nfile path: {self.file_path}\n\n"
 
 class Function:
     def __init__(self):
@@ -495,12 +501,13 @@ class File(AST):
         else:
             root_node = self.root_node
         for child in root_node.children:
-            if child.type == 'preproc_ifdef':   # 如果是ifdef，则遍历ifdef内部的节点
+            if child.type in ['preproc_ifdef', 'preproc_else', 'linkage_specification', 'declaration_list', 'ERROR']:   # 如果是ifdef，则遍历ifdef内部的节点
                 self.construct_file(child)
-            if child.type in ['declaration', 'struct_specifier']:    # 结构体定义
+            elif child.type in ['declaration', 'struct_specifier']:    # 结构体定义
                 if child.type == 'struct_specifier':    # struct A{int a; int b;};
                     type_node = child
                 else:           # struct A{int a; int b;} a; 在定义的时候多了声明
+                    self.function.add_func(child, self.file_path)
                     type_node = child.child_by_field_name('type')
                 if type_node.type == 'struct_specifier' and type_node.child_by_field_name('body'):  # 结构体类型,不是函数指针
                     structure = Structure(type_node)
@@ -607,11 +614,21 @@ class File(AST):
     def see_cg(self, unknown=True, pdf=True, view=True):
         '''可视化函数调用图'''
         self.construct_call_graph()
-        if not self.function():
+        if not self.CG:
             return
+        # dot = Digraph(comment=self.file_path, graph_attr={'rankdir': 'LR'})
         dot = Digraph(comment=self.file_path)
+
+        nodes = set(self.CG.keys())     # 不画没有出边的节点
+        for edges in self.CG.values():
+            nodes |= set(edges)
+        for edges in self.unknown_call.values():
+            nodes |= set(edges)
+
         for funcs in self.function().values():
             for f in funcs:
+                if f.id not in nodes:
+                    continue
                 file_path = f.file_path.replace('\\', '/')
                 label = f'name: {f.name}\\ntype: {f.type}\\nparameters: {list(f.signature["parameters"])}\\nfile path: {file_path}'
                 # label = f.name
@@ -637,7 +654,9 @@ class File(AST):
         self.idType.vars.update(other.idType.vars)
         for func_name, funcs in other.function().items():
             self.function().setdefault(func_name, [])
-            self.function()[func_name].extend(funcs)
+            for func in funcs:
+                if func not in self.function()[func_name]:
+                    self.function()[func_name].append(func)
             self.function.id_to_func.update(other.function.id_to_func)
 
 class Dir(AST):
@@ -654,48 +673,114 @@ class Dir(AST):
 
         self.Include = {f: [] for f in self.filepaths}
         self.files = {f: None for f in self.filepaths}
-        for f in self.filepaths:
+        self.Included = {f: [] for f in self.filepaths}
+        self.Indegree = {f: 0 for f in self.filepaths}      # 按照拓扑排序，先把入度为0（没有引用文件或者全部引用完的）的文件的函数加载
+        self.load = {f: False for f in self.filepaths}
+        for f in self.filepaths:    
             self.files[f] = File('c', os.path.join(self.path, f))
             code = r'{}'.format(open(os.path.join(self.path, f), 'r', encoding='utf-8', errors='ignore').read())
             tree = self.parser.parse(bytes(code, 'utf8'))
             root_node = tree.root_node
             self.find_include(root_node, f)
                         
+        cycles = self.detect_cycles()
+        temp_include = {}   # 为了解决循环引用的问题，先把循环引用的文件的第一个引用关系去掉，保存在temp_include中
+        if cycles:
+            print("There exists cycles")
+            for cycle in cycles:
+                print(cycle[-1], end=' ')
+                for f in cycle:
+                    print('-> ' + f, end=' ')
+                self.Include[cycle[0]].remove(cycle[1])
+                self.Included[cycle[1]].remove(cycle[0])
+                self.Indegree[cycle[0]] -= 1
+                temp_include[cycle[0]] = cycle[1]
+            print()
+
         for f in self.filepaths:
             self.files[f].construct_file()
-        for f in self.files:
-            for include_file in self.Include[f]:
-                self.files[f].merge(self.files[include_file])
-            self.files[f].construct_file()
-            self.files[f].construct_call_graph()
-            self.files[f].see_cg(view=False, unknown=True)
 
+        while True:
+            finish_include = True
+            for f in self.files:
+                if self.Indegree[f] == 0 and not self.load[f]:
+                    finish_include = False
+                    for include_file in self.Include[f]:
+                        self.files[f].merge(self.files[include_file])
+                    self.Include[f] = []
+                    self.files[f].construct_file()
+                    self.files[f].construct_call_graph()
+                    for included_file in self.Included[f]:
+                        self.Indegree[included_file] -= 1
+                    self.load[f] = True
+                    break
+            if finish_include:
+                if temp_include:
+                    for f, include in temp_include.items():
+                        self.files[f].merge(self.files[include])
+                        self.files[f].construct_file()
+                        self.files[f].construct_call_graph()
+                for f, indegree in self.Indegree.items():
+                    print(f)
+                    self.files[f].see_cg(view=False, unknown=True)
+                    if indegree != 0:
+                        print(f"\tError: not finish yet!")
+                break
+
+    def detect_cycles(self):    
+        '''检测self.Include是否有环，例如A引用了B，B引用了C，C引用了A，返回这样的环的列表[[A,B,C],[...]]'''
+        visited = set()
+        stack = []
+        cycles = []
+        def dfs(node):
+            if node in stack:
+                cycle = stack[stack.index(node):]
+                cycles.append(cycle)
+                return
+            if node in visited:
+                return
+            visited.add(node)
+            stack.append(node)
+            for neighbor in self.Include.get(node, []):
+                dfs(neighbor)
+            stack.pop()
+        for node in self.Include:
+            dfs(node)
+        return cycles
+        
     def find_include(self, node, f):
         for child in node.children:
             if child.type == 'preproc_include':
                 path = child.child_by_field_name('path')
-                if path.type == 'string_literal':
+                if path.type in ['string_literal', 'system_lib_string']:
+                # if path.type == 'string_literal':
                     include = text(path)[1:-1]
                     if include == 'config.h':   # VS的配置头文件忽略
                         continue
                     include_path = os.path.normpath(os.path.join(os.path.dirname(f), include)).replace('\\', '/')
-                    if include_path in self.Include:
+                    if include_path in self.Include and include_path != f:
                         self.Include[f].append(include_path)
                     else:
                         file = os.path.basename(include_path)
                         is_find = False
                         for f_ in self.filepaths:
                             if file == os.path.basename(f_):
-                                self.Include[f].append(f_)
+                                include_path = f_
+                                if f == include_path:
+                                    continue
+                                self.Include[f].append(include_path)
                                 is_find = True
                                 break
                         if not is_find:
-                            print(f'Error: In file {f}, {include} not in files')
+                            # print(f'In file {f}, {include} not in files')
+                            continue
+                    self.Included[include_path].append(f)
+                    self.Indegree[f] += 1
             elif child.type == 'preproc_ifdef': # ifdef
                 self.find_include(child, f)
 
 if __name__ == '__main__':
-    # file = File('c', 'test.c')
+    # file = File('c', 'test/5/littlefs-master/lfs_util.h')
     # file.construct_file()
     # file.see_cg(view=True)
-    dir = Dir('./test/4')
+    dir = Dir('./test/1')
