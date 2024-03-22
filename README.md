@@ -67,12 +67,17 @@ pdg.see_pdg(code, view=True)
 ![PDG](https://github.com/rebibabo/static_program_analysis_by_tree_sitter/assets/80667434/5e9b495e-97f3-45bd-b2c8-cfe220ebaaf8)
 
 ## 生成CG
-CG.py继承自AST.py，能够生成函数调用图，运行下面代码能够生成CG图
+File.py继承自AST.py，能够生成函数调用图，运行下面代码能够生成单个项目的CG图
 ```
-cg = CG('c')
-cg.see_cg(code, view=True)
+file = File("path to project")
+file.see_cg(code, view=True)
+```
+生成项目目录所有文件的CG图：
+```
+dir = Dir('path to project')
 ```
 生成CG图样例：
+![捕获](https://github.com/rebibabo/static_program_analysis_by_tree_sitter/assets/80667434/b7dd8037-984e-4bea-920d-d3bdd1b4f8fe)
 
 
-![5](https://github.com/rebibabo/static_program_analysis_by_tree_sitter/assets/80667434/9daf48a1-0315-4113-9e3d-6f6f81707501)
+
